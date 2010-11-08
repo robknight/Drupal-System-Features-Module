@@ -1,0 +1,104 @@
+<?php
+// $Id$
+
+/**
+ * @file System Feature Integration
+ * Provides the ability to export module status to features
+ * @author Rob Knight <http://drupal.org/user/36475>
+ */
+
+/**
+ * Implementation of hook_features_api()
+ */
+function system_features_features_api() {
+  return array(
+    'system_features_module' => array(
+      'name' => t('Module Status'),
+      'default_hook' => 'system_features_module_default_settings'
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_features_export_options().
+ */
+function system_features_module_features_export_options() {
+  $options = module_list();
+  asort($options);
+  return $options;
+}
+
+/**
+ * Implementation of hook_features_export()
+ */
+function system_features_module_features_export($data, &$export, $module_name = '') {
+  $export['dependencies']['features'] = 'features';
+  
+  foreach ($data as $module) {
+    $export['dependencies'][$module] = $module;
+    $export['features']['system_features_module'][$module] = $module;
+  }
+  
+  return array();
+}
+
+/**
+ * Implementation of hook_features_export_render()
+ */
+function system_features_module_features_export_render($module_name, $data, $export = NULL) {
+  $code = array();
+  $code[] = '  $modules = array();';
+  $code[] = '';
+  
+  $modules = module_rebuild_cache();
+
+  asort($data);
+  
+  foreach ($data as $module_name) {
+    if (isset($modules[$module_name])) {
+      $module = $modules[$module_name];
+      $weight = db_result(db_query("SELECT weight FROM {system} WHERE filename = '%s'", $module->filename));
+      $item = array('name' => $module->name, 'weight' => $weight,
+                    'status' => $module->status);
+      $code[] = '  $modules[] = '. features_var_export($item, '  ') .';';
+    }
+  }
+  
+  $code[] = '  return $modules;';
+  $code = implode("\n", $code);
+  
+  return array('system_features_module_default_settings' => $code);
+}
+
+/**
+ * Rebuilds the feature - updates the database so that it matches what is
+ * specified in the feature configuration
+ */
+function _system_features_module_rebuild($module) {
+  db_query("UPDATE {system} SET weight = %d, status = %d WHERE type = 'module'"
+           . " AND name = '%s'", $module['weight'], $module['status'],
+           $module['name']);
+  
+  if (db_affected_rows() < 1) {
+    drupal_set_message(t("Could not set status of module '%module'.  Does not exist in system table"),
+                       array('%module' => $module['name']));
+  }
+}
+
+/**
+ * Implementation of hook_features_rebuild()
+ */
+function system_features_module_features_rebuild($module) {
+  $items = module_invoke($module, 'system_features_module_default_settings');
+  //loop over the items we need to recreate
+  foreach ($items as $idx => $item) {
+    _system_features_module_rebuild($module);    
+  }
+}
+
+/**
+ * Implementation of hook_features_revert()
+ */
+function system_features_module_features_revert($module) {
+  system_features_module_features_rebuild($module);
+}

@@ -1,0 +1,7 @@
+; $Id$
+name = System Features
+description = Provides Features integration for module and theme status
+dependencies[] = features
+package = Features
+version = 6.x-0.1
+core = 6.x
